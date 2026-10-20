@@ -2,6 +2,7 @@
 build/
 install/
 log/
+Log/
 
 # CMake 编译产物
 cmake-build-*/
