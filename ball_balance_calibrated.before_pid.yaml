@@ -1,0 +1,95 @@
+arm: left
+camera:
+  backend: orbbec
+  python: /home/mingyang/miniconda3/envs/lerobot/bin/python
+  serial: CP2N1630002X
+  width: 640
+  height: 480
+  fps: 60
+  snapshot_warmup_s: 2.0
+  image_topic: /camera/color/image_raw
+  base_x_image: up
+  base_y_image: left
+plate:
+  size_m:
+  - 0.2
+  - 0.2
+  center_in_tcp_m:
+  - 0.15103
+  - -0.017987
+  - 0.102
+  normal_in_tcp:
+  - 1.0
+  - 0.0
+  - 0.0
+  home_yaw_degrees: -35.59732359544687
+  mounting_verified: true
+vision:
+  use_markers: false
+  ball_color: white
+  hsv_lower:
+  - 0
+  - 0
+  - 150
+  hsv_upper:
+  - 179
+  - 85
+  - 255
+  min_area_px: 50
+  max_area_px: 15000
+  min_circularity: 0.55
+  ball_diameter_m: 0.04
+  detection_edge_margin_m: 0.003
+  min_ball_area_ratio: 0.35
+  max_ball_area_ratio: 2.5
+  shadow_value_min: 100
+  min_local_contrast: 25
+  min_solidity: 0.8
+  max_aspect_ratio: 2.5
+  association_timeout_s: 0.15
+  association_slack_m: 0.015
+  max_ball_speed_mps: 1.5
+  marker_ids:
+  - 10
+  - 11
+  - 12
+  - 13
+  marker_centers_m:
+  - - -0.08
+    - -0.08
+  - - 0.08
+    - -0.08
+  - - 0.08
+    - 0.08
+  - - -0.08
+    - 0.08
+  image_corners_px:
+  - - 299.0
+    - 429.0
+  - - 462.0
+    - 200.0
+  - - 234.0
+    - 39.0
+  - - 72.0
+    - 264.0
+  image_size:
+  - 640
+  - 480
+  require_markers_for_control: false
+control:
+  controller: pd
+  kp: 0.8
+  kd: 0.8
+  max_tilt_degrees: 5.0
+  max_tilt_rate_degrees_s: 90.0
+  control_hz: 120.0
+  preview_hz: 10.0
+  prediction_delay_s: 0.04
+  max_translation_m: 0.03
+  image_timeout_s: 0.15
+  pose_timeout_s: 0.2
+  detection_timeout_s: 0.15
+  tracking_ready_s: 0.5
+  edge_margin_m: 0.03
+  velocity_alpha: 0.8
+  velocity_beta: 0.3

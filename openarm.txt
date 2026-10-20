@@ -1,0 +1,332 @@
+sudo ip link set can0 type can bitrate 1000000 dbitrate 5000000 fd on
+sudo ip link set can0 up
+sudo ip link set can1 type can bitrate 1000000 dbitrate 5000000 fd on
+sudo ip link set can1 up
+
+source .venv/bin/activate
+dora run dataflow-webxr.yaml --uv
+
+python scripts/orbbec_color_capture.py --probe
+ls -l /dev/v4l/by-path/*3.3:1.0-video-index0
+ls -l /dev/v4l/by-path/*3.2:1.0-video-index0
+
+cd /home/mingyang/openarm_ws/src/dora-openarm-data-collection
+source .venv/bin/activate
+./nodes/dora-openarm-webxr/example/prepare_tls.sh "$(hostname).local"
+dora run dataflow-webxr.yaml --uv
+
+http://localhost:8000/
+
+## 格式转换软件
+cd /home/mingyang/openarm_ws/src/dora-openarm-data-collection
+/home/mingyang/miniconda3/envs/lerobot/bin/python scripts/dora_to_lerobot_gui.py
+
+# 模型训练
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate lerobot
+cd ~/lerobot
+
+RUN_NAME="clean_the_table_$(date +%Y%m%d_%H%M%S)"
+
+CUDA_VISIBLE_DEVICES=0 ACCELERATE_MIXED_PRECISION=bf16 \
+  python -m lerobot.scripts.lerobot_train \
+  --dataset.repo_id=local/clean_the_table \
+  --dataset.root="$HOME/lerobot/datasets/clean_the_table" \
+  --dataset.video_backend=pyav \
+  --policy.type=act \
+  --policy.device=cuda \
+  --policy.use_amp=true \
+  --policy.push_to_hub=false \
+  --policy.chunk_size=50 \
+  --policy.n_action_steps=25 \
+  --policy.optimizer_lr=1e-5 \
+  --policy.optimizer_lr_backbone=1e-5 \
+  --batch_size=12 \
+  --num_workers=4 \
+  --steps=100000 \
+  --save_checkpoint=true \
+  --save_freq=20000 \
+  --log_freq=100 \
+  --env_eval_freq=0 \
+  --seed=1000 \
+  --output_dir="$HOME/lerobot/outputs/act/openarm/$RUN_NAME" \
+  --job_name="$RUN_NAME" \
+  --wandb.enable=true \
+  --wandb.project=clean_the_table \
+  --wandb.mode=online \
+  --dataset.eval_split=0.1 \
+  --eval_steps=20000
+
+# 继续训练
+conda activate lerobot
+cd /home/robolab/lerobot
+
+RUN_NAME="clean_the_table_$(date +%Y%m%d_%H%M%S)"
+CKPT="/home/robolab/lerobot/outputs/act/openarm/clean_the_table_20261015_115715/checkpoints/last/pretrained_model"
+
+CUDA_VISIBLE_DEVICES=0 ACCELERATE_MIXED_PRECISION=bf16 \
+  python -m lerobot.scripts.lerobot_train \
+  --dataset.repo_id=local/clean_the_table_merged \
+  --dataset.root="$HOME/lerobot/datasets/clean_the_table_merged" \
+  --dataset.video_backend=pyav \
+  --policy.path="$CKPT" \
+  --policy.device=cuda \
+  --policy.use_amp=true \
+  --policy.push_to_hub=false \
+  --policy.chunk_size=50 \
+  --policy.n_action_steps=25 \
+  --policy.optimizer_lr=1e-5 \
+  --policy.optimizer_lr_backbone=1e-6 \
+  --batch_size=12 \
+  --num_workers=4 \
+  --steps=50000 \
+  --save_checkpoint=true \
+  --save_freq=1000 \
+  --log_freq=100 \
+  --env_eval_freq=0 \
+  --seed=1000 \
+  --output_dir="$HOME/lerobot/outputs/act/openarm/$RUN_NAME" \
+  --job_name="$RUN_NAME" \
+  --wandb.enable=true \
+  --wandb.project=clean_the_table \
+  --wandb.mode=online \
+  --dataset.eval_split=0.1 \
+  --eval_steps=5000
+
+# /home/mingyang/openarm_ws/src/dora-openarm-data-collection/webxr_data_150hz/clean_the_table/merged_10_16
+
+
+# 模型推理
+unset http_proxy https_proxy ftp_proxy all_proxy HTTP_PROXY HTTPS_PROXY FTP_PROXY ALL_PROXY
+sudo ufw allow 8080/tcp
+
+python -m lerobot.async_inference.policy_server \
+  --host=0.0.0.0 \
+  --port=8080
+
+conda activate lerobot
+cd ~/lerobot
+
+CAMERAS='{
+  top: {
+    type: orbbec_color,
+    serial_number_or_name: "CP2N1630002X",
+    width: 640,
+    height: 480,
+    fps: 30,
+    color_mode: rgb,
+    rotation: 0,
+    warmup_s: 1
+  },
+  front: {
+    type: orbbec_color,
+    serial_number_or_name: "CV2L360000BG",
+    width: 640,
+    height: 480,
+    fps: 30,
+    color_mode: rgb,
+    rotation: 0,
+    warmup_s: 1
+  },
+  left_wrist: {
+    type: opencv,
+    index_or_path: "/dev/video0",
+    backend: V4L2,
+    fourcc: YUYV,
+    width: 960,
+    height: 600,
+    fps: 30,
+    color_mode: rgb,
+    rotation: 0,
+    warmup_s: 1
+  },
+  right_wrist: {
+    type: opencv,
+    index_or_path: "/dev/video2",
+    backend: V4L2,
+    fourcc: YUYV,
+    width: 960,
+    height: 600,
+    fps: 30,
+    color_mode: rgb,
+    rotation: 0,
+    warmup_s: 1
+  }
+}'
+
+lerobot-setup-can --mode=setup --interfaces=can0,can1
+
+# act
+python -m lerobot.async_inference.robot_client \
+  --server_address=192.168.8.20:8080 \
+  --policy_type=act \
+  --pretrained_name_or_path=/home/robolab/lerobot/outputs/act/openarm/clean_the_table_20261015_231008/checkpoints/last/pretrained_model \
+  --policy_device=cuda \
+  --client_device=cpu \
+  --robot.type=bi_openarm_follower \
+  --robot.id=bi_openarm_follower \
+  --robot.left_arm_config.port=can1 \
+  --robot.left_arm_config.side=left \
+  --robot.left_arm_config.use_motor_zero=true \
+  --robot.right_arm_config.port=can0 \
+  --robot.right_arm_config.side=right \
+  --robot.right_arm_config.use_motor_zero=true \
+  --robot.cameras="$CAMERAS" \
+  --fps=30 \
+  --actions_per_chunk=50 \
+  --chunk_size_threshold=0.5 \
+  --aggregate_fn_name=latest_only \
+  --task="Only pick the blue cube and put it into the black area." \
+  --robot.left_arm_config.hardware_version=v2 \
+  --robot.right_arm_config.hardware_version=v2 \
+  --control_fps=150 \
+  --observation_fps=10 \
+  --max_action_velocity=0 \
+  --aggregate_fn_name=weighted_average \
+  --angle_conversion=none
+
+# pi0.5
+python -m lerobot.async_inference.robot_client \
+  --server_address=192.168.8.20:8080 \
+  --policy_type=pi05 \
+  --pretrained_name_or_path=/home/robolab/lerobot/outputs/pi05/openarm/clean_the_table/checkpoints/030000/pretrained_model \
+  --policy_device=cuda \
+  --client_device=cpu \
+  --robot.type=bi_openarm_follower \
+  --robot.id=bi_openarm_follower \
+  --robot.left_arm_config.port=can1 \
+  --robot.left_arm_config.side=left \
+  --robot.left_arm_config.use_motor_zero=true \
+  --robot.right_arm_config.port=can0 \
+  --robot.right_arm_config.side=right \
+  --robot.right_arm_config.use_motor_zero=true \
+  --robot.cameras="$CAMERAS" \
+  --fps=30 \
+  --actions_per_chunk=50 \
+  --chunk_size_threshold=1.0 \
+  --aggregate_fn_name=latest_only \
+  --task="Clean the table." \
+  --robot.left_arm_config.hardware_version=v2 \
+  --robot.right_arm_config.hardware_version=v2 \
+  --control_fps=150 \
+  --observation_fps=30 \
+  --max_action_velocity=0 \
+  --angle_conversion=none
+
+###
+CAMERAS='{
+  front: {
+    type: orbbec_color,
+    serial_number_or_name: "CP2N1630002X",
+    width: 640,
+    height: 480,
+    fps: 30,
+    color_mode: rgb,
+    rotation: 0,
+    warmup_s: 1
+  },
+  left_wrist: {
+    type: opencv,
+    index_or_path: "/dev/video0",
+    backend: V4L2,
+    fourcc: YUYV,
+    width: 960,
+    height: 600,
+    fps: 30,
+    color_mode: rgb,
+    rotation: 0,
+    warmup_s: 1
+  },
+  right_wrist: {
+    type: opencv,
+    index_or_path: "/dev/video2",
+    backend: V4L2,
+    fourcc: YUYV,
+    width: 960,
+    height: 600,
+    fps: 30,
+    color_mode: rgb,
+    rotation: 0,
+    warmup_s: 1
+  }
+}'
+
+python -m lerobot.async_inference.robot_client \
+  --server_address=192.168.8.20:8080 \
+  --policy_type=act \
+  --pretrained_name_or_path=/home/robolab/a_yvjia/openarm_mujoco/v2/outputs/lerobot_act_A_bs8_run1/checkpoints/last/pretrained_model \
+  --policy_device=cuda \
+  --client_device=cpu \
+  --robot.type=bi_openarm_follower \
+  --robot.id=bi_openarm_follower \
+  --robot.left_arm_config.port=can1 \
+  --robot.left_arm_config.side=left \
+  --robot.left_arm_config.use_motor_zero=true \
+  --robot.right_arm_config.port=can0 \
+  --robot.right_arm_config.side=right \
+  --robot.right_arm_config.use_motor_zero=true \
+  --robot.cameras="$CAMERAS" \
+  --fps=30 \
+  --actions_per_chunk=50 \
+  --chunk_size_threshold=1.0 \
+  --task="Stack the blocks." \
+  --robot.left_arm_config.hardware_version=v2 \
+  --robot.right_arm_config.hardware_version=v2 \
+  --control_fps=150 \
+  --observation_fps=10 \
+  --max_action_velocity=0 \
+  --aggregate_fn_name=weighted_average \
+  --angle_conversion=deg_to_rad \
+  --gripper_conversion=mujoco_magnitude
+
+conda activate lerobot
+cd ~/lerobot
+
+RUN_NAME="pi05_clean_table_$(date +%Y%m%d_%H%M%S)"
+
+CUDA_VISIBLE_DEVICES=0 ACCELERATE_MIXED_PRECISION=bf16 \
+python -m lerobot.scripts.lerobot_train \
+  --dataset.repo_id=local/clean_the_table \
+  --dataset.root="$HOME/lerobot/datasets/openarm/clean_the_table/merged_10_16" \
+  --dataset.video_backend=pyav \
+  --dataset.eval_split=0.1 \
+  --policy.type=pi05 \
+  --policy.pretrained_path=lerobot/pi05_base \
+  --policy.device=cuda \
+  --policy.dtype=bfloat16 \
+  --policy.use_amp=true \
+  --policy.push_to_hub=false \
+  --policy.gradient_checkpointing=true \
+  --policy.freeze_vision_encoder=true \
+  --policy.train_expert_only=true \
+  --policy.chunk_size=50 \
+  --policy.n_action_steps=25 \
+  --policy.optimizer_lr=2.5e-5 \
+  --policy.scheduler_warmup_steps=1000 \
+  --policy.scheduler_decay_steps=30000 \
+  --policy.scheduler_decay_lr=2.5e-6 \
+  --batch_size=8 \
+  --num_workers=4 \
+  --steps=50000 \
+  --save_checkpoint=true \
+  --save_freq=10000 \
+  --log_freq=100 \
+  --env_eval_freq=0 \
+  --eval_steps=10000 \
+  --max_eval_samples=1024 \
+  --seed=1000 \
+  --output_dir="$HOME/lerobot/outputs/pi05/openarm/$RUN_NAME" \
+  --job_name="$RUN_NAME" \
+  --wandb.enable=true \
+  --wandb.project=clean_the_table \
+  --wandb.mode=online
+
+
+cd /home/mingyang/openarm_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+
+ros2 run openarm_ball_balance ball_balance_calibrate \
+  --config src/openarm_ros2/openarm_ball_balance/config/left_gemini335l.yaml \
+  --output /home/mingyang/openarm_ws/ball_balance_calibrated.yaml
+  

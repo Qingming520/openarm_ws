@@ -1,0 +1,74 @@
+arm: left
+camera:
+  backend: orbbec
+  python: /home/mingyang/miniconda3/envs/lerobot/bin/python
+  serial: CP2N1630002X
+  width: 1280
+  height: 800
+  fps: 30
+  snapshot_warmup_s: 2.0
+  image_topic: /camera/color/image_raw
+  base_x_image: up
+  base_y_image: left
+plate:
+  size_m:
+  - 0.2
+  - 0.2
+  center_in_tcp_m: []
+  home_yaw_degrees: 3.6913859864512757
+  mounting_verified: false
+vision:
+  use_markers: false
+  ball_color: white
+  hsv_lower:
+  - 0
+  - 0
+  - 150
+  hsv_upper:
+  - 179
+  - 85
+  - 255
+  min_area_px: 50
+  max_area_px: 15000
+  min_circularity: 0.55
+  marker_ids:
+  - 10
+  - 11
+  - 12
+  - 13
+  marker_centers_m:
+  - - -0.08
+    - -0.08
+  - - 0.08
+    - -0.08
+  - - 0.08
+    - 0.08
+  - - -0.08
+    - 0.08
+  image_corners_px:
+  - - 481.0
+    - 608.0
+  - - 449.0
+    - 173.0
+  - - 10.0
+    - 211.0
+  - - 34.0
+    - 644.0
+  image_size:
+  - 1280
+  - 800
+  require_markers_for_control: false
+control:
+  controller: pd
+  kp: 2.0
+  kd: 1.2
+  max_tilt_degrees: 3.0
+  max_tilt_rate_degrees_s: 10.0
+  max_translation_m: 0.02
+  image_timeout_s: 0.15
+  pose_timeout_s: 0.2
+  detection_timeout_s: 0.15
+  tracking_ready_s: 0.5
+  edge_margin_m: 0.03
+  velocity_alpha: 0.65
+  velocity_beta: 0.12
